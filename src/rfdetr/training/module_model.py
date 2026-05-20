@@ -139,11 +139,9 @@ class RFDETRModelModule(LightningModule):
         """Compute loss for one training step and log metrics.
 
         PTL handles gradient accumulation (``accumulate_grad_batches``), AMP
-        (``precision``), and gradient clipping (``gradient_clip_val``) — no
-        manual ``GradScaler`` or loss scaling here.  The loss is divided by
-        ``trainer.accumulate_grad_batches`` so that the accumulated gradient
-        magnitude matches the legacy engine (which scales each sub-batch by
-        ``1/grad_accum_steps`` before calling ``backward()``).
+        (``precision``), gradient clipping (``gradient_clip_val``), and loss
+        normalization for accumulated gradients — no manual ``GradScaler`` or
+        loss scaling here.
 
         Args:
             batch: Tuple of (NestedTensor samples, list of target dicts).
@@ -158,13 +156,6 @@ class RFDETRModelModule(LightningModule):
         loss_dict = self.criterion(outputs, targets)
         weight_dict = self.criterion.weight_dict
         loss = sum(loss_dict[k] * weight_dict[k] for k in loss_dict if k in weight_dict)
-        # Normalise by grad-accum steps so the accumulated gradient matches the
-        # legacy engine, which scales each sub-batch by 1/grad_accum_steps before
-        # backward().  PTL accumulates full-scale gradients by default; dividing
-        # here keeps the effective LR identical to the non-PTL training path.
-        # We return the scaled loss to PTL but log the unscaled value so that
-        # train/loss and val/loss are on the same scale.
-        loss_scaled = loss / self.trainer.accumulate_grad_batches
         train_log_sync_dist = bool(self.train_config.train_log_sync_dist)
         train_log_on_step = bool(self.train_config.train_log_on_step)
         self.log_dict(
@@ -197,7 +188,7 @@ class RFDETRModelModule(LightningModule):
             self.log("train/lr", base_lr, prog_bar=True, on_step=True, on_epoch=False)
             self.log("train/lr_min", min_lr, prog_bar=True, on_step=True, on_epoch=False)
             self.log("train/lr_max", max_lr, prog_bar=True, on_step=True, on_epoch=False)
-        return loss_scaled
+        return loss
 
     def validation_step(self, batch: Tuple, batch_idx: int) -> Dict[str, Any]:
         """Run forward pass and postprocess for one validation step.

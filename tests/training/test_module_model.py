@@ -647,15 +647,15 @@ class TestTrainingStep:
 
         assert loss.item() == pytest.approx(1.0 + 10.0 + 6.0)
 
-    def test_loss_normalised_by_accum_steps(self, tmp_path):
-        """Loss must be divided by accumulate_grad_batches to match legacy engine scaling."""
+    def test_loss_not_normalised_by_accum_steps(self, tmp_path):
+        """training_step must return raw loss because Lightning normalizes accumulation."""
         loss_dict = {"loss_ce": torch.tensor(4.0)}
         weight_dict = {"loss_ce": 1.0}
         module, samples, targets, _, _ = self._run_step(tmp_path, loss_dict, weight_dict, accumulate_grad_batches=4)
 
         loss = module.training_step((samples, targets), batch_idx=0)
 
-        assert loss.item() == pytest.approx(1.0)  # 4.0 / 4
+        assert loss.item() == pytest.approx(4.0)
 
     def test_logs_train_loss_to_prog_bar(self, tmp_path):
         """Aggregate training loss must be logged with prog_bar=True for visibility."""
